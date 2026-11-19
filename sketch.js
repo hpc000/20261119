@@ -1,3 +1,5 @@
+let bgSprite; // 儲存背景圖片（bg/bg1.png）
+let bgOffsetX = 0; // 儲存背景目前累積的水平位移量（正值代表背景往右移，負值代表背景往左移）
 let characterSprite; // 儲存角色一的精靈圖
 let walkSprite; // 儲存角色一的走路精靈圖
 let magicSprite; // 儲存角色一的施法精靈圖
@@ -24,7 +26,8 @@ const effectFrameWidth = 740 / effectFrameCount; // 計算魔法特效每格的�
 const effectFrameHeight = 19; // 設定魔法特效每格的高度
 const framesPerStep = 8; // 設定動畫每隔幾個畫面更新一格
 
-function preload() { // 在畫布建立前載入角色圖片
+function preload() { // 在畫布建立前載入背景與角色圖片
+  bgSprite = loadImage("bg/bg1.png"); // 載入背景圖片檔案
   characterSprite = loadImage("1/stop/stop.png"); // 載入角色一的十格精靈圖
   walkSprite = loadImage("1/walk/walk.png"); // 載入角色一的九格走路精靈圖
   magicSprite = loadImage("1/magic/magic.png"); // 載入角色一的四格施法精靈圖
@@ -33,34 +36,68 @@ function preload() { // 在畫布建立前載入角色圖片
 
 function setup() { // 初始化畫布與繪圖模式
   createCanvas(windowWidth, windowHeight); // 建立符合視窗尺寸的畫布
-  imageMode(CENTER); // 讓角色座標代表影格的中心點
   characterX = (width * 2) / 3; // 將角色初始位置設在畫布寬度的三分之二處
   frameRate(60); // 將動畫更新速率設定為每秒六十格
 } // 結束初始化函式
 
+function drawBackground() { // 繪製並串接三張相同大小的背景圖片
+  const bgAspect = bgSprite.width > 0 && bgSprite.height > 0 ? bgSprite.width / bgSprite.height : width / height; // 計算原始背景圖寬高比
+  const singleBgWidth = height * bgAspect; // 讓單張背景高度填滿畫布並依原比例計算寬度
+  const singleBgHeight = height; // 設定單張背景高度為畫布高度
+  const minBgOffsetX = width - singleBgWidth * 2; // 當背景往左移到底（顯示最右端）時的最小位移量
+  const maxBgOffsetX = singleBgWidth; // 當背景往右移到底（顯示最左端）時的最大位移量
+  bgOffsetX = constrain(bgOffsetX, minBgOffsetX, maxBgOffsetX); // 將背景位移限制在三張串接範圍內
+
+  push(); // 暫存繪圖狀態
+  imageMode(CORNER); // 以左上角為基準繪製背景圖方便串接
+  image(bgSprite, bgOffsetX - singleBgWidth, 0, singleBgWidth, singleBgHeight); // 繪製左側複製背景圖
+  image(bgSprite, bgOffsetX, 0, singleBgWidth, singleBgHeight); // 繪製中間主背景圖
+  image(bgSprite, bgOffsetX + singleBgWidth, 0, singleBgWidth, singleBgHeight); // 繪製右側複製背景圖
+  pop(); // 還原繪圖狀態
+
+  return { singleBgWidth, minBgOffsetX, maxBgOffsetX }; // 回傳背景尺寸與邊界位移值
+} // 結束背景繪製函式
+
 function draw() { // 每個畫面更新一次背景與角色
-  background("#87CEEB"); // 使用天空藍清除畫布
+  background("#87CEEB"); // 圖片尚未載入完成時的備援底色
+  const { minBgOffsetX, maxBgOffsetX } = drawBackground(); // 繪製三張串接背景並取得左右捲動極限
+
   const movingRight = keyIsDown(RIGHT_ARROW); // 檢查右方向鍵目前是否按住
   const movingLeft = keyIsDown(LEFT_ARROW); // 檢查左方向鍵目前是否按住
   isWalking = movingRight || movingLeft; // 沒有按住左右鍵時切回站立動畫
   const movementStep = constrain(width * 0.004, 2, 8); // 依畫布寬度計算適合不同裝置的移動速度
-  if (movingRight) { // 按住右方向鍵時執行右行控制
-    isWalking = true; // 切換至走路動畫
-    facingDirection = 1; // 設定角色朝向右方
-    characterX += movementStep; // 讓角色向右移動
-  } else if (movingLeft) { // 按住左方向鍵且未按右鍵時執行左行控制
-    isWalking = true; // 切換至走路動畫
-    facingDirection = -1; // 設定角色朝向左方
-    characterX -= movementStep; // 讓角色向左移動
-  } // 結束方向鍵移動判斷
+
   const characterHeight = height / 3; // 將角色基本顯示高度設為整個畫布高度的 1/3
   const characterScale = characterHeight / frameHeight; // 依原始站立影格高度計算等比例縮放倍率
   const characterWidth = characterHeight * (frameWidth / frameHeight); // 依原始圖片寬高比例計算角色顯示寬度
+
+  if (movingRight) { // 按住右方向鍵時執行右行控制
+    isWalking = true; // 切換至走路動畫
+    facingDirection = 1; // 設定角色朝向右方
+    if (bgOffsetX > minBgOffsetX) { // 尚未抵達背景最右端時背景往左捲動
+      bgOffsetX = max(minBgOffsetX, bgOffsetX - movementStep); // 背景往左移動且不超過最右邊界
+    } else { // 已抵達背景最右端且背景捲動暫停後，角色改往右移動
+      characterX += movementStep; // 讓角色向右移動
+    } // 結束右移捲動與角色位移判斷
+  } else if (movingLeft) { // 按住左方向鍵且未按右鍵時執行左行控制
+    isWalking = true; // 切換至走路動畫
+    facingDirection = -1; // 設定角色朝向左方
+    if (bgOffsetX < maxBgOffsetX) { // 尚未抵達背景最左端時背景往右捲動
+      bgOffsetX = min(maxBgOffsetX, bgOffsetX + movementStep); // 背景往右移動且不超過最左邊界
+    } else { // 已抵達背景最左端且背景捲動暫停後，角色改往左移動
+      characterX -= movementStep; // 讓角色向左移動
+    } // 結束左移捲動與角色位移判斷
+  } // 結束方向鍵移動判斷
+
   characterX = constrain(characterX, characterWidth / 2, width - characterWidth / 2); // 限制角色中心避免超出畫布左右邊界
+
   if (isCasting && frameCount - magicStartFrame >= magicFrameCount * framesPerStep) { // 檢查施法動畫是否已完整播放一次
     isCasting = false; // 結束施法動畫並恢復一般角色動作
     activeEffects.push({ x: characterX + magicDirection * characterWidth / 2, y: height - characterHeight * 0.58, direction: magicDirection }); // 在角色前方建立朝施法方向飛行的特效
   } // 結束施法動畫完成判斷
+
+  push(); // 暫存角色繪製前的座標狀態
+  imageMode(CENTER); // 讓角色影格以中心點定位
   const activeSprite = isCasting ? magicSprite : isWalking ? walkSprite : characterSprite; // 根據角色狀態選擇施法、走路或站立精靈圖
   const activeFrameCount = isCasting ? magicFrameCount : isWalking ? walkFrameCount : frameCountInSprite; // 取得目前精靈圖的影格總數
   const activeFrameWidth = isCasting ? magicFrameWidth : isWalking ? walkFrameWidth : frameWidth; // 取得目前精靈圖每格的寬度
@@ -71,11 +108,13 @@ function draw() { // 每個畫面更新一次背景與角色
   const activeWidth = activeFrameWidth * characterScale; // 依相同縮放比例計算目前角色影格的顯示寬度
   const activeHeight = activeFrameHeight * characterScale; // 依相同縮放比例計算目前角色影格的顯示高度
   const characterY = height - activeHeight / 2; // 將目前角色影格底部對齊畫布底部
+
   push(); // 暫存目前的繪圖座標轉換狀態
   translate(characterX, characterY); // 將繪圖原點移至角色中心
   scale(isCasting ? magicDirection : facingDirection, 1); // 依施法或角色朝向決定是否水平翻轉
   image(activeSprite, 0, 0, activeWidth, activeHeight, sourceX, 0, activeFrameWidth, activeFrameHeight); // 裁切並繪製目前角色影格
   pop(); // 還原繪圖座標轉換狀態
+
   const effectScale = characterScale; // 使用角色縮放倍率讓特效適應不同畫布
   const effectWidth = effectFrameWidth * effectScale; // 計算特效影格的顯示寬度
   const effectHeight = effectFrameHeight * effectScale; // 計算特效影格的顯示高度
@@ -94,6 +133,7 @@ function draw() { // 每個畫面更新一次背景與角色
     image(magicEffectSprite, 0, 0, effectWidth, effectHeight, effectFrameIndex * effectFrameWidth, 0, effectFrameWidth, effectFrameHeight); // 裁切並繪製目前特效影格
     pop(); // 還原繪圖座標轉換狀態
   } // 結束飛行中特效更新迴圈
+  pop(); // 還原角色繪製前的座標狀態
 } // 結束繪圖函式
 
 function keyPressed() { // 按下方向鍵時切換角色狀態與朝向
